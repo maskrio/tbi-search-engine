@@ -2,12 +2,12 @@ import os
 import pickle
 import contextlib
 import heapq
-import time
-import math
+import argparse
 
 from index import InvertedIndexReader, InvertedIndexWriter
 from util import IdMap, sorted_merge_posts_and_tfs
-from compression import StandardPostings, VBEPostings
+from compression import StandardPostings, VBEPostings, EliasGammaPostings
+from retrieval import retrieve_tfidf_taat, retrieve_bm25_taat, retrieve_wand
 from tqdm import tqdm
 
 class BSBIIndex:
@@ -203,25 +203,72 @@ class BSBIIndex:
         if len(self.term_id_map) == 0 or len(self.doc_id_map) == 0:
             self.load()
 
-        terms = [self.term_id_map[word] for word in query.split()]
+        term_ids = self._get_existing_query_term_ids(query)
+        if not term_ids:
+            return []
+
         with InvertedIndexReader(self.index_name, self.postings_encoding, directory=self.output_dir) as merged_index:
+            return retrieve_tfidf_taat(term_ids, merged_index, self.doc_id_map, k=k)
 
-            scores = {}
-            for term in terms:
-                if term in merged_index.postings_dict:
-                    df = merged_index.postings_dict[term][1]
-                    N = len(merged_index.doc_length)
-                    postings, tf_list = merged_index.get_postings_list(term)
-                    for i in range(len(postings)):
-                        doc_id, tf = postings[i], tf_list[i]
-                        if doc_id not in scores:
-                            scores[doc_id] = 0
-                        if tf > 0:
-                            scores[doc_id] += math.log(N / df) * (1 + math.log(tf))
+    def retrieve_bm25(self, query, k=10, k1=1.2, b=0.75):
+        """
+        Ranked retrieval BM25 dengan skema TaaT.
 
-            # Top-K
-            docs = [(score, self.doc_id_map[doc_id]) for (doc_id, score) in scores.items()]
-            return sorted(docs, key = lambda x: x[0], reverse = True)[:k]
+        Parameters
+        ----------
+        query: str
+            Query tokens yang dipisahkan oleh spasi
+        k: int
+            Banyak dokumen yang dikembalikan
+        k1: float
+            Parameter BM25 untuk kontrol pengaruh TF
+        b: float
+            Parameter BM25 untuk normalisasi panjang dokumen
+        """
+        if len(self.term_id_map) == 0 or len(self.doc_id_map) == 0:
+            self.load()
+
+        term_ids = self._get_existing_query_term_ids(query)
+        if not term_ids:
+            return []
+
+        with InvertedIndexReader(self.index_name, self.postings_encoding, directory=self.output_dir) as merged_index:
+            return retrieve_bm25_taat(term_ids, merged_index, self.doc_id_map, k=k, k1=k1, b=b)
+
+    def retrieve_wand(self, query, k=10, scoring='bm25', k1=1.2, b=0.75):
+        """
+        WAND top-k retrieval untuk mode TF-IDF atau BM25.
+
+        Parameters
+        ----------
+        query: str
+            Query tokens yang dipisahkan oleh spasi
+        k: int
+            Banyak dokumen yang dikembalikan
+        scoring: str
+            Mode scoring: 'tfidf' atau 'bm25'
+        k1: float
+            Parameter BM25 (dipakai saat scoring='bm25')
+        b: float
+            Parameter BM25 (dipakai saat scoring='bm25')
+        """
+        if len(self.term_id_map) == 0 or len(self.doc_id_map) == 0:
+            self.load()
+
+        term_ids = self._get_existing_query_term_ids(query)
+        if not term_ids:
+            return []
+
+        with InvertedIndexReader(self.index_name, self.postings_encoding, directory=self.output_dir) as merged_index:
+            return retrieve_wand(term_ids, merged_index, self.doc_id_map, k=k, scoring=scoring, k1=k1, b=b)
+
+    def _get_existing_query_term_ids(self, query):
+        """Mengembalikan daftar termID query yang memang ada di koleksi."""
+        terms = []
+        for word in query.split():
+            if word in self.term_id_map.str_to_id:
+                terms.append(self.term_id_map.str_to_id[word])
+        return terms
 
     def index(self):
         """
@@ -253,7 +300,19 @@ class BSBIIndex:
 
 if __name__ == "__main__":
 
-    BSBI_instance = BSBIIndex(data_dir = 'collection', \
-                              postings_encoding = VBEPostings, \
-                              output_dir = 'index')
+    parser = argparse.ArgumentParser(description="Bangun indeks dengan BSBI")
+    parser.add_argument("--compression", choices=["standard", "vbe", "elias-gamma"], default="vbe")
+    parser.add_argument("--data-dir", default="collection")
+    parser.add_argument("--output-dir", default="index")
+    args = parser.parse_args()
+
+    encoding_map = {
+        "standard": StandardPostings,
+        "vbe": VBEPostings,
+        "elias-gamma": EliasGammaPostings,
+    }
+
+    BSBI_instance = BSBIIndex(data_dir=args.data_dir, \
+                              postings_encoding=encoding_map[args.compression], \
+                              output_dir=args.output_dir)
     BSBI_instance.index() # memulai indexing!
