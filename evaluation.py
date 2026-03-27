@@ -1,90 +1,133 @@
-import re
+import argparse
+import os
 from bsbi import BSBIIndex
-from compression import VBEPostings
+from compression import StandardPostings, VBEPostings, EliasGammaPostings
+from metrics import rbp, dcg, ndcg, ap
 
 ######## >>>>> sebuah IR metric: RBP p = 0.8
-
-def rbp(ranking, p = 0.8):
-  """ menghitung search effectiveness metric score dengan 
-      Rank Biased Precision (RBP)
-
-      Parameters
-      ----------
-      ranking: List[int]
-         vektor biner seperti [1, 0, 1, 1, 1, 0]
-         gold standard relevansi dari dokumen di rank 1, 2, 3, dst.
-         Contoh: [1, 0, 1, 1, 1, 0] berarti dokumen di rank-1 relevan,
-                 di rank-2 tidak relevan, di rank-3,4,5 relevan, dan
-                 di rank-6 tidak relevan
-        
-      Returns
-      -------
-      Float
-        score RBP
-  """
-  score = 0.
-  for i in range(1, len(ranking)):
-    pos = i - 1
-    score += ranking[pos] * (p ** (i - 1))
-  return (1 - p) * score
 
 
 ######## >>>>> memuat qrels
 
-def load_qrels(qrel_file = "qrels.txt", max_q_id = 30, max_doc_id = 1033):
-  """ memuat query relevance judgment (qrels) 
-      dalam format dictionary of dictionary
-      qrels[query id][document id]
 
-      dimana, misal, qrels["Q3"][12] = 1 artinya Doc 12
-      relevan dengan Q3; dan qrels["Q3"][10] = 0 artinya
-      Doc 10 tidak relevan dengan Q3.
+def load_qrels(qrel_file="qrels.txt", max_q_id=30, max_doc_id=1033):
+    """memuat query relevance judgment (qrels)
+    dalam format dictionary of dictionary
+    qrels[query id][document id]
 
-  """
-  qrels = {"Q" + str(i) : {i:0 for i in range(1, max_doc_id + 1)} \
-                 for i in range(1, max_q_id + 1)}
-  with open(qrel_file) as file:
-    for line in file:
-      parts = line.strip().split()
-      qid = parts[0]
-      did = int(parts[1])
-      qrels[qid][did] = 1
-  return qrels
+    dimana, misal, qrels["Q3"][12] = 1 artinya Doc 12
+    relevan dengan Q3; dan qrels["Q3"][10] = 0 artinya
+    Doc 10 tidak relevan dengan Q3.
+
+    """
+    qrels = {
+        "Q" + str(i): {i: 0 for i in range(1, max_doc_id + 1)}
+        for i in range(1, max_q_id + 1)
+    }
+    with open(qrel_file) as file:
+        for line in file:
+            parts = line.strip().split()
+            qid = parts[0]
+            did = int(parts[1])
+            qrels[qid][did] = 1
+    return qrels
+
 
 ######## >>>>> EVALUASI !
 
-def eval(qrels, query_file = "queries.txt", k = 1000):
-  """ 
+
+def eval(
+    qrels,
+    query_file="queries.txt",
+    k=1000,
+    compression="vbe",
+    scoring="tfidf",
+    retrieval="full",
+    bm25_k1=1.2,
+    bm25_b=0.75,
+):
+    """
     loop ke semua 30 query, hitung score di setiap query,
     lalu hitung MEAN SCORE over those 30 queries.
     untuk setiap query, kembalikan top-1000 documents
-  """
-  BSBI_instance = BSBIIndex(data_dir = 'collection', \
-                          postings_encoding = VBEPostings, \
-                          output_dir = 'index')
+    """
+    compression_map = {
+        "standard": StandardPostings,
+        "vbe": VBEPostings,
+        "elias-gamma": EliasGammaPostings,
+    }
 
-  with open(query_file) as file:
-    rbp_scores = []
-    for qline in file:
-      parts = qline.strip().split()
-      qid = parts[0]
-      query = " ".join(parts[1:])
+    BSBI_instance = BSBIIndex(
+        data_dir="collection",
+        postings_encoding=compression_map[compression],
+        output_dir="index",
+    )
 
-      # HATI-HATI, doc id saat indexing bisa jadi berbeda dengan doc id
-      # yang tertera di qrels
-      ranking = []
-      for (score, doc) in BSBI_instance.retrieve_tfidf(query, k = k):
-          did = int(re.search(r'\/.*\/.*\/(.*)\.txt', doc).group(1))
-          ranking.append(qrels[qid][did])
-      rbp_scores.append(rbp(ranking))
+    def retrieve(query_text):
+        if retrieval == "wand":
+            return BSBI_instance.retrieve_wand(
+                query_text, k=k, scoring=scoring, k1=bm25_k1, b=bm25_b
+            )
+        if scoring == "bm25":
+            return BSBI_instance.retrieve_bm25(query_text, k=k, k1=bm25_k1, b=bm25_b)
+        return BSBI_instance.retrieve_tfidf(query_text, k=k)
 
-  print("Hasil evaluasi TF-IDF terhadap 30 queries")
-  print("RBP score =", sum(rbp_scores) / len(rbp_scores))
+    with open(query_file) as file:
+        rbp_scores = []
+        dcg_scores = []
+        ndcg_scores = []
+        ap_scores = []
+        for qline in file:
+            parts = qline.strip().split()
+            qid = parts[0]
+            query = " ".join(parts[1:])
 
-if __name__ == '__main__':
-  qrels = load_qrels()
+            # HATI-HATI, doc id saat indexing bisa jadi berbeda dengan doc id
+            # yang tertera di qrels
+            ranking = []
+            for score, doc in retrieve(query):
+                did = int(os.path.splitext(os.path.basename(doc))[0])
+                ranking.append(qrels[qid][did])
 
-  assert qrels["Q1"][166] == 1, "qrels salah"
-  assert qrels["Q1"][300] == 0, "qrels salah"
+            rbp_scores.append(rbp(ranking))
+            dcg_scores.append(dcg(ranking, k=min(10, len(ranking))))
+            ndcg_scores.append(ndcg(ranking, k=min(10, len(ranking))))
+            ap_scores.append(ap(ranking))
 
-  eval(qrels)
+    print(
+        f"Hasil evaluasi ({scoring.upper()} + {retrieval.upper()}) terhadap 30 queries"
+    )
+    print("RBP score  =", sum(rbp_scores) / len(rbp_scores))
+    print("DCG score  =", sum(dcg_scores) / len(dcg_scores))
+    print("NDCG score =", sum(ndcg_scores) / len(ndcg_scores))
+    print("AP score   =", sum(ap_scores) / len(ap_scores))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Evaluasi retrieval")
+    parser.add_argument("--query-file", default="queries.txt")
+    parser.add_argument("--k", type=int, default=1000)
+    parser.add_argument(
+        "--compression", choices=["standard", "vbe", "elias-gamma"], default="vbe"
+    )
+    parser.add_argument("--scoring", choices=["tfidf", "bm25"], default="tfidf")
+    parser.add_argument("--retrieval", choices=["full", "wand"], default="full")
+    parser.add_argument("--bm25-k1", type=float, default=1.2)
+    parser.add_argument("--bm25-b", type=float, default=0.75)
+    args = parser.parse_args()
+
+    qrels = load_qrels()
+
+    assert qrels["Q1"][166] == 1, "qrels salah"
+    assert qrels["Q1"][300] == 0, "qrels salah"
+
+    eval(
+        qrels,
+        query_file=args.query_file,
+        k=args.k,
+        compression=args.compression,
+        scoring=args.scoring,
+        retrieval=args.retrieval,
+        bm25_k1=args.bm25_k1,
+        bm25_b=args.bm25_b,
+    )
