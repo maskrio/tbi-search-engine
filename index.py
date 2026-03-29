@@ -201,6 +201,8 @@ class InvertedIndexWriter(InvertedIndex):
     efisien Inverted Index yang disimpan di sebuah file.
     """
     def __enter__(self):
+        if self.directory:
+            os.makedirs(self.directory, exist_ok=True)
         self.index_file = open(self.index_file_path, 'wb+')
         return self
 

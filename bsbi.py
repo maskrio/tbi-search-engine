@@ -44,6 +44,8 @@ class BSBIIndex:
     def save(self):
         """Menyimpan doc_id_map and term_id_map ke output directory via pickle"""
 
+        os.makedirs(self.output_dir, exist_ok=True)
+
         with open(os.path.join(self.output_dir, 'terms.dict'), 'wb') as f:
             pickle.dump(self.term_id_map, f)
         with open(os.path.join(self.output_dir, 'docs.dict'), 'wb') as f:
