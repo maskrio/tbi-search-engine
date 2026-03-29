@@ -64,9 +64,9 @@ class IdMap:
             raise TypeError
 
 
-class TrieTermDict:
+class PatriciaTermDict:
     """
-    Dictionary term berbasis trie sederhana yang memetakan term -> term_id.
+    Dictionary term berbasis Patricia tree yang memetakan term -> term_id.
     """
 
     _VALUE_KEY = "__value__"
@@ -74,8 +74,8 @@ class TrieTermDict:
     _CHILDREN_KEY = "__children__"
 
     def __init__(self):
-        # Patricia trie root node.
-        self._trie = {
+        # Patricia tree root node.
+        self._patricia = {
             self._LABEL_KEY: "",
             self._VALUE_KEY: None,
             self._CHILDREN_KEY: {},
@@ -96,7 +96,7 @@ class TrieTermDict:
         return i
 
     def insert(self, key, value):
-        node = self._trie
+        node = self._patricia
         remaining = key
 
         while True:
@@ -140,7 +140,7 @@ class TrieTermDict:
             return
 
     def lookup(self, key):
-        node = self._trie
+        node = self._patricia
         remaining = key
 
         while True:
@@ -167,7 +167,7 @@ class TrieTermDict:
         import pickle
 
         with open(path, "wb") as f:
-            pickle.dump(self._trie, f)
+            pickle.dump(self._patricia, f)
 
     @classmethod
     def load(cls, path):
@@ -175,7 +175,7 @@ class TrieTermDict:
 
         obj = cls()
         with open(path, "rb") as f:
-            obj._trie = pickle.load(f)
+            obj._patricia = pickle.load(f)
         return obj
 
 def sorted_merge_posts_and_tfs(posts_tfs1, posts_tfs2):

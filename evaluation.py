@@ -129,7 +129,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--compression", choices=["standard", "vbe", "elias-gamma"], default="vbe"
     )
-    parser.add_argument("--term-dict", choices=["idmap", "trie"], default="idmap")
+    parser.add_argument("--term-dict", choices=["idmap", "patricia"], default="idmap")
     parser.add_argument("--scoring", choices=["tfidf", "bm25"], default="tfidf")
     parser.add_argument("--retrieval", choices=["full", "wand", "faiss"], default="full")
     parser.add_argument("--bm25-k1", type=float, default=1.2)

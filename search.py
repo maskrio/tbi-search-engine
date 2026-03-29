@@ -6,7 +6,7 @@ from vector_index import LSIFaissIndex
 def main():
     parser = argparse.ArgumentParser(description="Document search demo")
     parser.add_argument("--compression", choices=["standard", "vbe", "elias-gamma"], default="vbe")
-    parser.add_argument("--term-dict", choices=["idmap", "trie"], default="idmap")
+    parser.add_argument("--term-dict", choices=["idmap", "patricia"], default="idmap")
     parser.add_argument("--scoring", choices=["tfidf", "bm25"], default="tfidf")
     parser.add_argument("--retrieval", choices=["full", "wand", "faiss"], default="full")
     parser.add_argument("--k", type=int, default=10)

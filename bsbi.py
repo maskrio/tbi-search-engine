@@ -5,7 +5,7 @@ import heapq
 import argparse
 
 from index import InvertedIndexReader, InvertedIndexWriter
-from util import IdMap, TrieTermDict, sorted_merge_posts_and_tfs
+from util import IdMap, PatriciaTermDict, sorted_merge_posts_and_tfs
 from compression import StandardPostings, VBEPostings, EliasGammaPostings
 from retrieval import retrieve_tfidf_taat, retrieve_bm25_taat, retrieve_wand
 from tqdm import tqdm
@@ -32,11 +32,11 @@ class BSBIIndex:
         self.postings_encoding = postings_encoding
         if index_mode not in ("bsbi", "spimi"):
             raise ValueError("index_mode harus 'bsbi' atau 'spimi'")
-        if term_dict_mode not in ("idmap", "trie"):
-            raise ValueError("term_dict_mode harus 'idmap' atau 'trie'")
+        if term_dict_mode not in ("idmap", "patricia"):
+            raise ValueError("term_dict_mode harus 'idmap' atau 'patricia'")
         self.index_mode = index_mode
         self.term_dict_mode = term_dict_mode
-        self.term_trie = None
+        self.term_patricia = None
 
         # Untuk menyimpan nama-nama file dari semua intermediate inverted index
         self.intermediate_indices = []
@@ -51,12 +51,12 @@ class BSBIIndex:
         with open(os.path.join(self.output_dir, 'docs.dict'), 'wb') as f:
             pickle.dump(self.doc_id_map, f)
 
-        if self.term_dict_mode == "trie":
-            trie = TrieTermDict()
-            trie.build_from_terms(self.term_id_map.id_to_str)
-            trie_path = os.path.join(self.output_dir, 'terms.trie')
-            trie.save(trie_path)
-            self.term_trie = trie
+        if self.term_dict_mode == "patricia":
+            patricia = PatriciaTermDict()
+            patricia.build_from_terms(self.term_id_map.id_to_str)
+            patricia_path = os.path.join(self.output_dir, 'terms.patricia')
+            patricia.save(patricia_path)
+            self.term_patricia = patricia
 
     def load(self):
         """Memuat doc_id_map and term_id_map dari output directory"""
@@ -66,11 +66,11 @@ class BSBIIndex:
         with open(os.path.join(self.output_dir, 'docs.dict'), 'rb') as f:
             self.doc_id_map = pickle.load(f)
 
-        self.term_trie = None
-        if self.term_dict_mode == "trie":
-            trie_path = os.path.join(self.output_dir, 'terms.trie')
-            if os.path.exists(trie_path):
-                self.term_trie = TrieTermDict.load(trie_path)
+        self.term_patricia = None
+        if self.term_dict_mode == "patricia":
+            patricia_path = os.path.join(self.output_dir, 'terms.patricia')
+            if os.path.exists(patricia_path):
+                self.term_patricia = PatriciaTermDict.load(patricia_path)
 
     def parse_block(self, block_dir_relative):
         """
@@ -324,8 +324,8 @@ class BSBIIndex:
         """Mengembalikan daftar termID query yang memang ada di koleksi."""
         terms = []
         for word in query.split():
-            if self.term_trie is not None:
-                term_id = self.term_trie.lookup(word)
+            if self.term_patricia is not None:
+                term_id = self.term_patricia.lookup(word)
                 if term_id is not None:
                     terms.append(term_id)
             elif word in self.term_id_map.str_to_id:
@@ -368,7 +368,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Bangun indeks dengan BSBI")
     parser.add_argument("--compression", choices=["standard", "vbe", "elias-gamma"], default="vbe")
     parser.add_argument("--index-mode", choices=["bsbi", "spimi"], default="bsbi")
-    parser.add_argument("--term-dict", choices=["idmap", "trie"], default="idmap")
+    parser.add_argument("--term-dict", choices=["idmap", "patricia"], default="idmap")
     parser.add_argument("--data-dir", default="collection")
     parser.add_argument("--output-dir", default="index")
     args = parser.parse_args()
