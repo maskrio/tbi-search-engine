@@ -3,6 +3,7 @@ import pickle
 
 from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import normalize
 
 
 try:
@@ -61,6 +62,7 @@ class LSIFaissIndex:
 
         self.doc_paths = doc_paths
         self.lsi_matrix = lsi_matrix.astype("float32")
+        self.lsi_matrix = normalize(self.lsi_matrix, norm="l2", copy=False)
         self._build_faiss_index()
 
     def save(self):
@@ -127,7 +129,10 @@ class LSIFaissIndex:
 
         tfidf_query = self.vectorizer.transform([query])
         lsi_query = self.svd.transform(tfidf_query).astype("float32")
-        return lsi_query[0] if lsi_query.shape[0] > 0 else None
+        if lsi_query.shape[0] == 0:
+            return None
+        lsi_query = normalize(lsi_query, norm="l2", copy=False)
+        return lsi_query[0]
 
     def _build_faiss_index(self):
         self.faiss_index = None
