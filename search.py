@@ -5,6 +5,7 @@ from compression import StandardPostings, VBEPostings, EliasGammaPostings
 def main():
     parser = argparse.ArgumentParser(description="Demo pencarian dokumen")
     parser.add_argument("--compression", choices=["standard", "vbe", "elias-gamma"], default="vbe")
+    parser.add_argument("--term-dict", choices=["idmap", "trie"], default="idmap")
     parser.add_argument("--scoring", choices=["tfidf", "bm25"], default="tfidf")
     parser.add_argument("--retrieval", choices=["full", "wand"], default="full")
     parser.add_argument("--k", type=int, default=10)
@@ -22,7 +23,8 @@ def main():
     # BSBIIndex hanya sebagai abstraksi untuk index tersebut
     bsbi_instance = BSBIIndex(data_dir='collection', \
                               postings_encoding=compression_map[args.compression], \
-                              output_dir='index')
+                              output_dir='index',
+                              term_dict_mode=args.term_dict)
 
     queries = ["alkylated with radioactive iodoacetate", \
                "psychodrama for disturbed children", \

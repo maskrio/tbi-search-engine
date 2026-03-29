@@ -5,7 +5,7 @@ import heapq
 import argparse
 
 from index import InvertedIndexReader, InvertedIndexWriter
-from util import IdMap, sorted_merge_posts_and_tfs
+from util import IdMap, TrieTermDict, sorted_merge_posts_and_tfs
 from compression import StandardPostings, VBEPostings, EliasGammaPostings
 from retrieval import retrieve_tfidf_taat, retrieve_bm25_taat, retrieve_wand
 from tqdm import tqdm
@@ -23,13 +23,20 @@ class BSBIIndex:
                     VBEPostings, dsb.
     index_name(str): Nama dari file yang berisi inverted index
     """
-    def __init__(self, data_dir, output_dir, postings_encoding, index_name = "main_index"):
+    def __init__(self, data_dir, output_dir, postings_encoding, index_name = "main_index", index_mode="bsbi", term_dict_mode="idmap"):
         self.term_id_map = IdMap()
         self.doc_id_map = IdMap()
         self.data_dir = data_dir
         self.output_dir = output_dir
         self.index_name = index_name
         self.postings_encoding = postings_encoding
+        if index_mode not in ("bsbi", "spimi"):
+            raise ValueError("index_mode harus 'bsbi' atau 'spimi'")
+        if term_dict_mode not in ("idmap", "trie"):
+            raise ValueError("term_dict_mode harus 'idmap' atau 'trie'")
+        self.index_mode = index_mode
+        self.term_dict_mode = term_dict_mode
+        self.term_trie = None
 
         # Untuk menyimpan nama-nama file dari semua intermediate inverted index
         self.intermediate_indices = []
@@ -42,6 +49,13 @@ class BSBIIndex:
         with open(os.path.join(self.output_dir, 'docs.dict'), 'wb') as f:
             pickle.dump(self.doc_id_map, f)
 
+        if self.term_dict_mode == "trie":
+            trie = TrieTermDict()
+            trie.build_from_terms(self.term_id_map.id_to_str)
+            trie_path = os.path.join(self.output_dir, 'terms.trie')
+            trie.save(trie_path)
+            self.term_trie = trie
+
     def load(self):
         """Memuat doc_id_map and term_id_map dari output directory"""
 
@@ -49,6 +63,12 @@ class BSBIIndex:
             self.term_id_map = pickle.load(f)
         with open(os.path.join(self.output_dir, 'docs.dict'), 'rb') as f:
             self.doc_id_map = pickle.load(f)
+
+        self.term_trie = None
+        if self.term_dict_mode == "trie":
+            trie_path = os.path.join(self.output_dir, 'terms.trie')
+            if os.path.exists(trie_path):
+                self.term_trie = TrieTermDict.load(trie_path)
 
     def parse_block(self, block_dir_relative):
         """
@@ -128,6 +148,42 @@ class BSBIIndex:
         for term_id in sorted(term_dict.keys()):
             sorted_doc_id = sorted(list(term_dict[term_id]))
             assoc_tf = [term_tf[term_id][doc_id] for doc_id in sorted_doc_id]
+            index.append(term_id, sorted_doc_id, assoc_tf)
+
+    def spimi_invert_write_block(self, block_dir_relative, index):
+        """
+        SPIMI (Single Pass In-Memory Indexing): inversion langsung saat parsing block
+        tanpa membentuk td_pairs global terlebih dahulu.
+
+        Alur:
+        1. Scan dokumen di block, update hashtable term_postings_tf (map term_id -> {doc_id -> tf})
+        2. Setelah semua dokumen di block selesai, sort term IDs dan write ke index
+
+        Parameters
+        ----------
+        block_dir_relative: str
+            Relative path ke direktori block (misal '1' untuk collection/1/)
+        index: InvertedIndexWriter
+            Writer untuk menyimpan intermediate index file block ini
+        """
+        block_path = os.path.join('.', self.data_dir, block_dir_relative)
+        term_postings_tf = {}
+
+        for filename in next(os.walk(block_path))[2]:
+            docname = os.path.join(block_path, filename)
+            doc_id = self.doc_id_map[docname]
+            with open(docname, "r", encoding="utf8", errors="surrogateescape") as f:
+                for token in f.read().split():
+                    term_id = self.term_id_map[token]
+                    if term_id not in term_postings_tf:
+                        term_postings_tf[term_id] = {}
+                    postings_tf = term_postings_tf[term_id]
+                    postings_tf[doc_id] = postings_tf.get(doc_id, 0) + 1
+
+        for term_id in sorted(term_postings_tf.keys()):
+            postings_tf = term_postings_tf[term_id]
+            sorted_doc_id = sorted(postings_tf.keys())
+            assoc_tf = [postings_tf[doc_id] for doc_id in sorted_doc_id]
             index.append(term_id, sorted_doc_id, assoc_tf)
 
     def merge(self, indices, merged_index):
@@ -266,7 +322,11 @@ class BSBIIndex:
         """Mengembalikan daftar termID query yang memang ada di koleksi."""
         terms = []
         for word in query.split():
-            if word in self.term_id_map.str_to_id:
+            if self.term_trie is not None:
+                term_id = self.term_trie.lookup(word)
+                if term_id is not None:
+                    terms.append(term_id)
+            elif word in self.term_id_map.str_to_id:
                 terms.append(self.term_id_map.str_to_id[word])
         return terms
 
@@ -280,14 +340,18 @@ class BSBIIndex:
         untuk parsing dokumen dan memanggil invert_write yang melakukan inversion
         di setiap block dan menyimpannya ke index yang baru.
         """
+        self.intermediate_indices = []
         # loop untuk setiap sub-directory di dalam folder collection (setiap block)
         for block_dir_relative in tqdm(sorted(next(os.walk(self.data_dir))[1])):
-            td_pairs = self.parse_block(block_dir_relative)
             index_id = 'intermediate_index_'+block_dir_relative
             self.intermediate_indices.append(index_id)
             with InvertedIndexWriter(index_id, self.postings_encoding, directory = self.output_dir) as index:
-                self.invert_write(td_pairs, index)
-                td_pairs = None
+                if self.index_mode == "spimi":
+                    self.spimi_invert_write_block(block_dir_relative, index)
+                else:
+                    td_pairs = self.parse_block(block_dir_relative)
+                    self.invert_write(td_pairs, index)
+                    td_pairs = None
     
         self.save()
 
@@ -302,6 +366,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Bangun indeks dengan BSBI")
     parser.add_argument("--compression", choices=["standard", "vbe", "elias-gamma"], default="vbe")
+    parser.add_argument("--index-mode", choices=["bsbi", "spimi"], default="bsbi")
+    parser.add_argument("--term-dict", choices=["idmap", "trie"], default="idmap")
     parser.add_argument("--data-dir", default="collection")
     parser.add_argument("--output-dir", default="index")
     args = parser.parse_args()
@@ -314,5 +380,7 @@ if __name__ == "__main__":
 
     BSBI_instance = BSBIIndex(data_dir=args.data_dir, \
                               postings_encoding=encoding_map[args.compression], \
-                              output_dir=args.output_dir)
+                              output_dir=args.output_dir,
+                              index_mode=args.index_mode,
+                              term_dict_mode=args.term_dict)
     BSBI_instance.index() # memulai indexing!

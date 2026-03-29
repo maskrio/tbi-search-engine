@@ -41,6 +41,7 @@ def eval(
     query_file="queries.txt",
     k=1000,
     compression="vbe",
+    term_dict_mode="idmap",
     scoring="tfidf",
     retrieval="full",
     bm25_k1=1.2,
@@ -61,6 +62,7 @@ def eval(
         data_dir="collection",
         postings_encoding=compression_map[compression],
         output_dir="index",
+        term_dict_mode=term_dict_mode,
     )
 
     def retrieve(query_text):
@@ -110,6 +112,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--compression", choices=["standard", "vbe", "elias-gamma"], default="vbe"
     )
+    parser.add_argument("--term-dict", choices=["idmap", "trie"], default="idmap")
     parser.add_argument("--scoring", choices=["tfidf", "bm25"], default="tfidf")
     parser.add_argument("--retrieval", choices=["full", "wand"], default="full")
     parser.add_argument("--bm25-k1", type=float, default=1.2)
@@ -126,6 +129,7 @@ if __name__ == "__main__":
         query_file=args.query_file,
         k=args.k,
         compression=args.compression,
+        term_dict_mode=args.term_dict,
         scoring=args.scoring,
         retrieval=args.retrieval,
         bm25_k1=args.bm25_k1,

@@ -63,6 +63,52 @@ class IdMap:
         else:
             raise TypeError
 
+
+class TrieTermDict:
+    """
+    Dictionary term berbasis trie sederhana yang memetakan term -> term_id.
+    """
+
+    _VALUE_KEY = "__value__"
+
+    def __init__(self):
+        self._trie = {}
+
+    def insert(self, key, value):
+        node = self._trie
+        for ch in key:
+            if ch not in node:
+                node[ch] = {}
+            node = node[ch]
+        node[self._VALUE_KEY] = value
+
+    def lookup(self, key):
+        node = self._trie
+        for ch in key:
+            if ch not in node:
+                return None
+            node = node[ch]
+        return node.get(self._VALUE_KEY)
+
+    def build_from_terms(self, id_to_terms):
+        for term_id, term in enumerate(id_to_terms):
+            self.insert(term, term_id)
+
+    def save(self, path):
+        import pickle
+
+        with open(path, "wb") as f:
+            pickle.dump(self._trie, f)
+
+    @classmethod
+    def load(cls, path):
+        import pickle
+
+        obj = cls()
+        with open(path, "rb") as f:
+            obj._trie = pickle.load(f)
+        return obj
+
 def sorted_merge_posts_and_tfs(posts_tfs1, posts_tfs2):
     """
     Menggabung (merge) dua lists of tuples (doc id, tf) dan mengembalikan
