@@ -4,7 +4,7 @@ from compression import StandardPostings, VBEPostings, EliasGammaPostings
 from vector_index import LSIFaissIndex
 
 def main():
-    parser = argparse.ArgumentParser(description="Demo pencarian dokumen")
+    parser = argparse.ArgumentParser(description="Document search demo")
     parser.add_argument("--compression", choices=["standard", "vbe", "elias-gamma"], default="vbe")
     parser.add_argument("--term-dict", choices=["idmap", "trie"], default="idmap")
     parser.add_argument("--scoring", choices=["tfidf", "bm25"], default="tfidf")
@@ -28,12 +28,12 @@ def main():
         vector_instance = LSIFaissIndex(data_dir="collection", output_dir=args.vector_dir)
         if not vector_instance.has_artifacts():
             raise FileNotFoundError(
-                "Vector index belum tersedia. Jalankan: python vector_build.py"
+                "Vector index is not available. Run: python vector_build.py"
             )
         vector_instance.load()
     else:
-        # sebelumnya sudah dilakukan indexing
-        # BSBIIndex hanya sebagai abstraksi untuk index tersebut
+        # Indexing is assumed to have been run previously.
+        # BSBIIndex serves as an abstraction over the stored index artifacts.
         bsbi_instance = BSBIIndex(data_dir='collection', \
                                   postings_encoding=compression_map[args.compression], \
                                   output_dir='index',

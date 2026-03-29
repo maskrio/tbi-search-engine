@@ -333,8 +333,7 @@ class BSBIIndex:
     def index(self):
         """
         Base indexing code
-        BAGIAN UTAMA untuk melakukan Indexing dengan skema BSBI (blocked-sort
-        based indexing)
+        BAGIAN UTAMA untuk melakukan Indexing dengan skema BSBI / SPIMI
 
         Method ini scan terhadap semua data di collection, memanggil parse_block
         untuk parsing dokumen dan memanggil invert_write yang melakukan inversion

@@ -46,14 +46,14 @@ class LSIFaissIndex:
     def build(self):
         docs, doc_paths = self._collect_documents()
         if not docs:
-            raise ValueError("Tidak ada dokumen yang ditemukan untuk membangun vector index")
+            raise ValueError("No documents found to build the vector index")
 
         self.vectorizer = TfidfVectorizer(lowercase=False, token_pattern=r"(?u)\b\w+\b")
         tfidf = self.vectorizer.fit_transform(docs)
 
         max_components = min(tfidf.shape[0] - 1, tfidf.shape[1] - 1)
         if max_components < 1:
-            raise ValueError("Koleksi terlalu kecil untuk membangun LSI")
+            raise ValueError("Collection is too small to build an LSI model")
 
         actual_components = min(self.n_components, max_components)
         self.svd = TruncatedSVD(n_components=actual_components, random_state=42)
@@ -65,7 +65,7 @@ class LSIFaissIndex:
 
     def save(self):
         if self.vectorizer is None or self.svd is None or self.lsi_matrix is None:
-            raise ValueError("Index belum dibangun. Jalankan build() dulu")
+            raise ValueError("Index is not built yet. Run build() first")
 
         os.makedirs(self.output_dir, exist_ok=True)
         with open(self.meta_path, "wb") as f:
@@ -81,7 +81,7 @@ class LSIFaissIndex:
             )
 
         if self.faiss_index is None:
-            raise ValueError("FAISS index tidak tersedia. Pastikan faiss-cpu terinstall")
+            raise ValueError("FAISS index is unavailable. Ensure faiss-cpu is installed")
         faiss.write_index(self.faiss_index, self.faiss_path)
 
     def load(self):
@@ -95,7 +95,7 @@ class LSIFaissIndex:
         self.n_components = metadata.get("n_components", self.n_components)
 
         if faiss is None:
-            raise ImportError("faiss belum terpasang. Install package faiss-cpu")
+            raise ImportError("faiss is not installed. Install package faiss-cpu")
 
         if os.path.exists(self.faiss_path):
             self.faiss_index = faiss.read_index(self.faiss_path)
@@ -108,7 +108,7 @@ class LSIFaissIndex:
             return []
 
         if self.faiss_index is None:
-            raise ValueError("FAISS index tidak tersedia. Jalankan build() lalu save()")
+            raise ValueError("FAISS index is unavailable. Run build() then save()")
 
         q = query_vec.reshape(1, -1).astype("float32")
         distances, indices = self.faiss_index.search(q, k)
@@ -117,13 +117,13 @@ class LSIFaissIndex:
         for distance, idx in zip(distances[0], indices[0]):
             if idx < 0:
                 continue
-            # Similarity proxy agar konsisten dengan sistem ranking "lebih besar lebih baik"
+            # Negated distance keeps the ranking convention: higher score is better.
             results.append((float(-distance), self.doc_paths[idx]))
         return results
 
     def _encode_query(self, query):
         if self.vectorizer is None or self.svd is None or self.lsi_matrix is None:
-            raise ValueError("Index belum dimuat. Jalankan load() atau build() dulu")
+            raise ValueError("Index is not loaded. Run load() or build() first")
 
         tfidf_query = self.vectorizer.transform([query])
         lsi_query = self.svd.transform(tfidf_query).astype("float32")
@@ -134,10 +134,10 @@ class LSIFaissIndex:
         if self.lsi_matrix is None:
             return
         if faiss is None:
-            raise ImportError("faiss belum terpasang. Install package faiss-cpu")
+            raise ImportError("faiss is not installed. Install package faiss-cpu")
 
         dim = self.lsi_matrix.shape[1]
-        # Gunakan exact top-k L2 search (tanpa cosine normalization)
+        # Use exact top-k L2 search (without cosine normalization).
         index = faiss.IndexFlatL2(dim)
         index.add(self.lsi_matrix)
         self.faiss_index = index

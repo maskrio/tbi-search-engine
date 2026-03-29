@@ -4,23 +4,23 @@ import math
 
 def retrieve_tfidf_taat(term_ids, merged_index, doc_id_map, k=10):
     """
-    Melakukan retrieval TF-IDF dengan skema Term-at-a-Time (TaaT).
+    Run TF-IDF retrieval using the Term-at-a-Time (TaaT) strategy.
 
     Parameters
     ----------
     term_ids: List[int]
-        Daftar term ID query yang valid (sudah ada di collection)
+        List of valid query term IDs found in the collection.
     merged_index: InvertedIndexReader
-        Reader untuk main inverted index
+        Reader for the main inverted index.
     doc_id_map: IdMap
-        Mapping docID -> nama dokumen
+        Mapping from docID to document path.
     k: int
-        Banyak dokumen yang dikembalikan
+        Number of documents to return.
 
     Returns
     -------
     List[Tuple[float, str]]
-        Top-k dokumen terurut menurun berdasarkan score TF-IDF.
+        Top-k documents sorted by TF-IDF score (descending).
     """
     N = len(merged_index.doc_length)
     scores = {}
@@ -43,27 +43,27 @@ def retrieve_tfidf_taat(term_ids, merged_index, doc_id_map, k=10):
 
 def retrieve_bm25_taat(term_ids, merged_index, doc_id_map, k=10, k1=1.2, b=0.75):
     """
-    Melakukan retrieval BM25 dengan skema Term-at-a-Time (TaaT).
+    Run BM25 retrieval using the Term-at-a-Time (TaaT) strategy.
 
     Parameters
     ----------
     term_ids: List[int]
-        Daftar term ID query yang valid
+        List of valid query term IDs.
     merged_index: InvertedIndexReader
-        Reader untuk main inverted index
+        Reader for the main inverted index.
     doc_id_map: IdMap
-        Mapping docID -> nama dokumen
+        Mapping from docID to document path.
     k: int
-        Banyak dokumen yang dikembalikan
+        Number of documents to return.
     k1: float
-        Parameter saturasi TF untuk BM25
+        BM25 TF saturation parameter.
     b: float
-        Parameter normalisasi panjang dokumen untuk BM25
+        BM25 document length normalization parameter.
 
     Returns
     -------
     List[Tuple[float, str]]
-        Top-k dokumen terurut menurun berdasarkan score BM25.
+        Top-k documents sorted by BM25 score (descending).
     """
     N = len(merged_index.doc_length)
     avgdl = merged_index.avg_doc_length if merged_index.avg_doc_length > 0 else 1.0
@@ -89,36 +89,36 @@ def retrieve_bm25_taat(term_ids, merged_index, doc_id_map, k=10, k1=1.2, b=0.75)
 
 def retrieve_wand(term_ids, merged_index, doc_id_map, k=10, scoring="bm25", k1=1.2, b=0.75):
     """
-    Melakukan retrieval WAND top-k.
+    Run top-k retrieval using WAND.
 
-    WAND melakukan pruning kandidat menggunakan upper bound score per term,
-    sehingga tidak semua dokumen harus dihitung skor penuhnya.
+    WAND prunes candidates using per-term upper bounds,
+    so not all documents need full score computation.
 
     Parameters
     ----------
     term_ids: List[int]
-        Daftar term ID query yang valid
+        List of valid query term IDs.
     merged_index: InvertedIndexReader
-        Reader untuk main inverted index
+        Reader for the main inverted index.
     doc_id_map: IdMap
-        Mapping docID -> nama dokumen
+        Mapping from docID to document path.
     k: int
-        Banyak dokumen yang dikembalikan
+        Number of documents to return.
     scoring: str
-        Mode scoring: 'tfidf' atau 'bm25'
+        Scoring mode: 'tfidf' or 'bm25'.
     k1: float
-        Parameter BM25 (dipakai saat scoring='bm25')
+        BM25 parameter (used when scoring='bm25').
     b: float
-        Parameter BM25 (dipakai saat scoring='bm25')
+        BM25 parameter (used when scoring='bm25').
 
     Returns
     -------
     List[Tuple[float, str]]
-        Top-k dokumen terurut menurun berdasarkan score.
+        Top-k documents sorted by score (descending).
     """
     mode = scoring.lower()
     if mode not in ("tfidf", "bm25"):
-        raise ValueError("scoring untuk WAND harus 'tfidf' atau 'bm25'")
+        raise ValueError("WAND scoring must be 'tfidf' or 'bm25'")
 
     N = len(merged_index.doc_length)
     avgdl = merged_index.avg_doc_length if merged_index.avg_doc_length > 0 else 1.0

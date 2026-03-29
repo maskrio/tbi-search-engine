@@ -12,13 +12,13 @@ from vector_index import LSIFaissIndex
 
 
 def load_qrels(qrel_file="qrels.txt", max_q_id=30, max_doc_id=1033):
-    """memuat query relevance judgment (qrels)
-    dalam format dictionary of dictionary
+    """Load query relevance judgments (qrels)
+    in dictionary-of-dictionaries format:
     qrels[query id][document id]
 
-    dimana, misal, qrels["Q3"][12] = 1 artinya Doc 12
-    relevan dengan Q3; dan qrels["Q3"][10] = 0 artinya
-    Doc 10 tidak relevan dengan Q3.
+    For example, qrels["Q3"][12] = 1 means Doc 12
+    is relevant to Q3, and qrels["Q3"][10] = 0 means
+    Doc 10 is not relevant to Q3.
 
     """
     qrels = {
@@ -51,9 +51,9 @@ def eval(
     vector_dir="index",
 ):
     """
-    loop ke semua 30 query, hitung score di setiap query,
-    lalu hitung MEAN SCORE over those 30 queries.
-    untuk setiap query, kembalikan top-1000 documents
+    Iterate through all 30 queries, compute scores per query,
+    then report mean scores across queries.
+    For each query, return top-k documents.
     """
     compression_map = {
         "standard": StandardPostings,
@@ -73,7 +73,7 @@ def eval(
         vector_instance = LSIFaissIndex(data_dir="collection", output_dir=vector_dir)
         if not vector_instance.has_artifacts():
             raise FileNotFoundError(
-                "Vector index belum tersedia. Jalankan: python vector_build.py"
+                "Vector index is not available. Run: python vector_build.py"
             )
         vector_instance.load()
 
@@ -115,7 +115,7 @@ def eval(
     else:
         method_label = f"{scoring.upper()} + {retrieval.upper()}"
 
-    print(f"Hasil evaluasi ({method_label}) terhadap 30 queries")
+    print(f"Evaluation results ({method_label}) over 30 queries")
     print("RBP score  =", sum(rbp_scores) / len(rbp_scores))
     print("DCG score  =", sum(dcg_scores) / len(dcg_scores))
     print("NDCG score =", sum(ndcg_scores) / len(ndcg_scores))
@@ -123,7 +123,7 @@ def eval(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluasi retrieval")
+    parser = argparse.ArgumentParser(description="Evaluate retrieval quality")
     parser.add_argument("--query-file", default="queries.txt")
     parser.add_argument("--k", type=int, default=1000)
     parser.add_argument(
@@ -140,8 +140,8 @@ if __name__ == "__main__":
 
     qrels = load_qrels()
 
-    assert qrels["Q1"][166] == 1, "qrels salah"
-    assert qrels["Q1"][300] == 0, "qrels salah"
+    assert qrels["Q1"][166] == 1, "qrels file validation failed"
+    assert qrels["Q1"][300] == 0, "qrels file validation failed"
 
     eval(
         qrels,
