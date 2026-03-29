@@ -46,8 +46,6 @@ class BSBIIndex:
 
         os.makedirs(self.output_dir, exist_ok=True)
 
-        with open(os.path.join(self.output_dir, 'terms.dict'), 'wb') as f:
-            pickle.dump(self.term_id_map, f)
         with open(os.path.join(self.output_dir, 'docs.dict'), 'wb') as f:
             pickle.dump(self.doc_id_map, f)
 
@@ -57,20 +55,42 @@ class BSBIIndex:
             patricia_path = os.path.join(self.output_dir, 'terms.patricia')
             patricia.save(patricia_path)
             self.term_patricia = patricia
+        else:
+            with open(os.path.join(self.output_dir, 'terms.dict'), 'wb') as f:
+                pickle.dump(self.term_id_map, f)
 
     def load(self):
         """Memuat doc_id_map and term_id_map dari output directory"""
 
-        with open(os.path.join(self.output_dir, 'terms.dict'), 'rb') as f:
-            self.term_id_map = pickle.load(f)
         with open(os.path.join(self.output_dir, 'docs.dict'), 'rb') as f:
             self.doc_id_map = pickle.load(f)
 
-        self.term_patricia = None
         if self.term_dict_mode == "patricia":
+            # Patricia mode does not need term_id_map for query-time lookup.
+            self.term_id_map = IdMap()
+            self.term_patricia = None
             patricia_path = os.path.join(self.output_dir, 'terms.patricia')
             if os.path.exists(patricia_path):
                 self.term_patricia = PatriciaTermDict.load(patricia_path)
+            else:
+                raise FileNotFoundError(
+                    f"Patricia file not found: {patricia_path}. Rebuild index with --term-dict patricia"
+                )
+        else:
+            with open(os.path.join(self.output_dir, 'terms.dict'), 'rb') as f:
+                self.term_id_map = pickle.load(f)
+            self.term_patricia = None
+
+    def _ensure_query_structures_loaded(self):
+        if len(self.doc_id_map) == 0:
+            self.load()
+            return
+        if self.term_dict_mode == "patricia":
+            if self.term_patricia is None:
+                self.load()
+        else:
+            if len(self.term_id_map) == 0:
+                self.load()
 
     def parse_block(self, block_dir_relative):
         """
@@ -258,8 +278,7 @@ class BSBIIndex:
         JANGAN LEMPAR ERROR/EXCEPTION untuk terms yang TIDAK ADA di collection.
 
         """
-        if len(self.term_id_map) == 0 or len(self.doc_id_map) == 0:
-            self.load()
+        self._ensure_query_structures_loaded()
 
         term_ids = self._get_existing_query_term_ids(query)
         if not term_ids:
@@ -283,8 +302,7 @@ class BSBIIndex:
         b: float
             Parameter BM25 untuk normalisasi panjang dokumen
         """
-        if len(self.term_id_map) == 0 or len(self.doc_id_map) == 0:
-            self.load()
+        self._ensure_query_structures_loaded()
 
         term_ids = self._get_existing_query_term_ids(query)
         if not term_ids:
@@ -310,8 +328,7 @@ class BSBIIndex:
         b: float
             Parameter BM25 (dipakai saat scoring='bm25')
         """
-        if len(self.term_id_map) == 0 or len(self.doc_id_map) == 0:
-            self.load()
+        self._ensure_query_structures_loaded()
 
         term_ids = self._get_existing_query_term_ids(query)
         if not term_ids:
@@ -323,12 +340,15 @@ class BSBIIndex:
     def _get_existing_query_term_ids(self, query):
         """Mengembalikan daftar termID query yang memang ada di koleksi."""
         terms = []
-        for word in query.split():
-            if self.term_patricia is not None:
+        if self.term_dict_mode == "patricia":
+            for word in query.split():
                 term_id = self.term_patricia.lookup(word)
                 if term_id is not None:
                     terms.append(term_id)
-            elif word in self.term_id_map.str_to_id:
+            return terms
+
+        for word in query.split():
+            if word in self.term_id_map.str_to_id:
                 terms.append(self.term_id_map.str_to_id[word])
         return terms
 

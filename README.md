@@ -161,14 +161,14 @@ method by a large margin in average query latency.
 
 ### Index Size 
 
-| Compression | Term Dict | Size (bytes) |
-| ----------- | --------- | ------------ |
-| vbe         | idmap     | 2,162,733    |
-| elias-gamma | idmap     | 2,579,313    |
-| vbe         | patricia  | 2,724,101    |
-| elias-gamma | patricia  | 3,140,681    |
-| standard    | idmap     | 3,259,578    |
-| standard    | patricia  | 3,820,946    |
+| Compression | Term Dict | Time (s) | Size (bytes) | 
+| ----------- | --------- | -------- | ------------ | 
+| vbe         | idmap     | 1.64     | 2,162,733    | 
+| vbe         | patricia  | 1.65     | 2,331,888    | 
+| elias-gamma | idmap     | 1.97     | 2,579,313    | 
+| elias-gamma | patricia  | 2.06     | 2,748,468    | 
+| standard    | idmap     | 1.35     | 3,259,578    | 
+| standard    | patricia  | 1.50     | 3,428,733    | 
 
 ## Data Format
 
