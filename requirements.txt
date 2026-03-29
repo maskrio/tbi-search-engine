@@ -1,1 +1,4 @@
 tqdm>=4.66.0
+numpy>=1.26.0
+scikit-learn>=1.4.0
+faiss-cpu>=1.8.0

@@ -3,6 +3,7 @@ import os
 from bsbi import BSBIIndex
 from compression import StandardPostings, VBEPostings, EliasGammaPostings
 from metrics import rbp, dcg, ndcg, ap
+from vector_index import LSIFaissIndex
 
 ######## >>>>> sebuah IR metric: RBP p = 0.8
 
@@ -46,6 +47,8 @@ def eval(
     retrieval="full",
     bm25_k1=1.2,
     bm25_b=0.75,
+    output_dir="index",
+    vector_dir="index",
 ):
     """
     loop ke semua 30 query, hitung score di setiap query,
@@ -61,11 +64,22 @@ def eval(
     BSBI_instance = BSBIIndex(
         data_dir="collection",
         postings_encoding=compression_map[compression],
-        output_dir="index",
+        output_dir=output_dir,
         term_dict_mode=term_dict_mode,
     )
 
+    vector_instance = None
+    if retrieval == "faiss":
+        vector_instance = LSIFaissIndex(data_dir="collection", output_dir=vector_dir)
+        if not vector_instance.has_artifacts():
+            raise FileNotFoundError(
+                "Vector index belum tersedia. Jalankan: python vector_build.py"
+            )
+        vector_instance.load()
+
     def retrieve(query_text):
+        if retrieval == "faiss":
+            return vector_instance.query_faiss(query_text, k=k)
         if retrieval == "wand":
             return BSBI_instance.retrieve_wand(
                 query_text, k=k, scoring=scoring, k1=bm25_k1, b=bm25_b
@@ -96,9 +110,12 @@ def eval(
             ndcg_scores.append(ndcg(ranking, k=min(10, len(ranking))))
             ap_scores.append(ap(ranking))
 
-    print(
-        f"Hasil evaluasi ({scoring.upper()} + {retrieval.upper()}) terhadap 30 queries"
-    )
+    if retrieval == "faiss":
+        method_label = "LSI+FAISS"
+    else:
+        method_label = f"{scoring.upper()} + {retrieval.upper()}"
+
+    print(f"Hasil evaluasi ({method_label}) terhadap 30 queries")
     print("RBP score  =", sum(rbp_scores) / len(rbp_scores))
     print("DCG score  =", sum(dcg_scores) / len(dcg_scores))
     print("NDCG score =", sum(ndcg_scores) / len(ndcg_scores))
@@ -114,9 +131,11 @@ if __name__ == "__main__":
     )
     parser.add_argument("--term-dict", choices=["idmap", "trie"], default="idmap")
     parser.add_argument("--scoring", choices=["tfidf", "bm25"], default="tfidf")
-    parser.add_argument("--retrieval", choices=["full", "wand"], default="full")
+    parser.add_argument("--retrieval", choices=["full", "wand", "faiss"], default="full")
     parser.add_argument("--bm25-k1", type=float, default=1.2)
     parser.add_argument("--bm25-b", type=float, default=0.75)
+    parser.add_argument("--output-dir", default="index")
+    parser.add_argument("--vector-dir", default="index")
     args = parser.parse_args()
 
     qrels = load_qrels()
@@ -134,4 +153,6 @@ if __name__ == "__main__":
         retrieval=args.retrieval,
         bm25_k1=args.bm25_k1,
         bm25_b=args.bm25_b,
+        output_dir=args.output_dir,
+        vector_dir=args.vector_dir,
     )
