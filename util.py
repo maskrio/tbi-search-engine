@@ -70,25 +70,94 @@ class TrieTermDict:
     """
 
     _VALUE_KEY = "__value__"
+    _LABEL_KEY = "__label__"
+    _CHILDREN_KEY = "__children__"
 
     def __init__(self):
-        self._trie = {}
+        # Patricia trie root node.
+        self._trie = {
+            self._LABEL_KEY: "",
+            self._VALUE_KEY: None,
+            self._CHILDREN_KEY: {},
+        }
+
+    def _new_node(self, label, value=None):
+        return {
+            self._LABEL_KEY: label,
+            self._VALUE_KEY: value,
+            self._CHILDREN_KEY: {},
+        }
+
+    def _common_prefix_len(self, a, b):
+        max_len = min(len(a), len(b))
+        i = 0
+        while i < max_len and a[i] == b[i]:
+            i += 1
+        return i
 
     def insert(self, key, value):
         node = self._trie
-        for ch in key:
-            if ch not in node:
-                node[ch] = {}
-            node = node[ch]
-        node[self._VALUE_KEY] = value
+        remaining = key
+
+        while True:
+            if remaining == "":
+                node[self._VALUE_KEY] = value
+                return
+
+            children = node[self._CHILDREN_KEY]
+            first_char = remaining[0]
+            child = children.get(first_char)
+
+            if child is None:
+                children[first_char] = self._new_node(remaining, value)
+                return
+
+            child_label = child[self._LABEL_KEY]
+            common = self._common_prefix_len(remaining, child_label)
+
+            if common == len(child_label):
+                node = child
+                remaining = remaining[common:]
+                continue
+
+            # Split existing edge to maintain Patricia compression.
+            common_label = child_label[:common]
+            old_suffix = child_label[common:]
+            new_suffix = remaining[common:]
+
+            split_node = self._new_node(common_label, None)
+            children[first_char] = split_node
+
+            # Re-attach existing child under the split node.
+            child[self._LABEL_KEY] = old_suffix
+            split_node[self._CHILDREN_KEY][old_suffix[0]] = child
+
+            # Attach new key branch or assign value at split node.
+            if new_suffix == "":
+                split_node[self._VALUE_KEY] = value
+            else:
+                split_node[self._CHILDREN_KEY][new_suffix[0]] = self._new_node(new_suffix, value)
+            return
 
     def lookup(self, key):
         node = self._trie
-        for ch in key:
-            if ch not in node:
+        remaining = key
+
+        while True:
+            if remaining == "":
+                return node.get(self._VALUE_KEY)
+
+            children = node[self._CHILDREN_KEY]
+            child = children.get(remaining[0])
+            if child is None:
                 return None
-            node = node[ch]
-        return node.get(self._VALUE_KEY)
+
+            label = child[self._LABEL_KEY]
+            if not remaining.startswith(label):
+                return None
+
+            remaining = remaining[len(label):]
+            node = child
 
     def build_from_terms(self, id_to_terms):
         for term_id, term in enumerate(id_to_terms):
